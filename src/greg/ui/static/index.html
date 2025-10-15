@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>greg — Local AI Background Remover</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --border: #262b36;
+      --text: #e6e9ef;
+      --muted: #9aa3b2;
+      --accent: #6366f1;
+      --accent-hover: #7c7ff6;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: 0.3px; }
+    header span { color: var(--muted); font-size: 13px; }
+    main {
+      display: grid;
+      grid-template-columns: 330px 1fr;
+      gap: 20px;
+      padding: 20px 24px;
+      flex: 1;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .controls { display: flex; flex-direction: column; gap: 12px; }
+    label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      background: #0f1115;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: #232834;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 16px;
+    }
+    .dropzone.drag { border-color: var(--accent); background: rgba(99, 102, 241, 0.08); }
+    .progress-wrap {
+      display: none;
+      margin-bottom: 16px;
+      background: #0f1115;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .progress-bar-bg {
+      height: 8px;
+      background: #232834;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.15s;
+    }
+    .stage {
+      position: relative;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      min-height: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bg-checker {
+      background-color: #1c1f26;
+      background-image:
+        linear-gradient(45deg, #2a2f3a 25%, transparent 25%),
+        linear-gradient(-45deg, #2a2f3a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #2a2f3a 75%),
+        linear-gradient(-45deg, transparent 75%, #2a2f3a 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    }
+    .bg-dark { background: #090a0d; }
+    .bg-light { background: #f3f4f6; }
+    .compare-box {
+      position: relative;
+      max-width: 100%;
+      max-height: 540px;
+      user-select: none;
+    }
+    .compare-box img {
+      display: block;
+      max-width: 100%;
+      max-height: 540px;
+      object-fit: contain;
+    }
+    .compare-after {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .compare-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: white;
+      box-shadow: 0 0 6px rgba(0,0,0,0.6);
+      pointer-events: none;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .thumbs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .thumb {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: #0f1115;
+      cursor: pointer;
+    }
+    .thumb.active { border-color: var(--accent); color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>greg</h1>
+    <span>Local AI Background Remover &amp; Format Pipeline</span>
+  </header>
+
+  <main>
+    <section class="card controls">
+      <div>
+        <label>Preset</label>
+        <select id="preset">
+          <option value="">Custom</option>
+        </select>
+      </div>
+      <div>
+        <label>Model</label>
+        <select id="model"></select>
+      </div>
+      <div class="row">
+        <div>
+          <label>Output Format</label>
+          <select id="ext"></select>
+        </div>
+        <div>
+          <label>Quality (1-100)</label>
+          <input id="quality" type="number" min="1" max="100" value="92" />
+        </div>
+      </div>
+      <div>
+        <label>Background Color ("transparent" or #hex)</label>
+        <input id="bg_color" type="text" value="transparent" />
+      </div>
+      <div>
+        <label>Defringe Strength: <span id="defringe_val">0.7</span></label>
+        <input id="defringe" type="range" min="0" max="1" step="0.05" value="0.7" />
+      </div>
+      <div class="row">
+        <div>
+          <label>Erode/Dilate (px)</label>
+          <input id="erode" type="number" min="-10" max="10" value="0" />
+        </div>
+        <div>
+          <label>Feather (px)</label>
+          <input id="feather" type="number" min="0" max="10" step="0.2" value="0" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Padding (px)</label>
+          <input id="pad" type="number" min="0" max="200" value="0" />
+        </div>
+        <div style="display:flex;align-items:end;padding-bottom:6px;">
+          <label class="check"><input id="trim" type="checkbox" /> Auto-Trim</label>
+        </div>
+      </div>
+      <button id="runBtn" class="btn" disabled>Remove Background</button>
+    </section>
+
+    <section class="card">
+      <div id="dropzone" class="dropzone">
+        <strong>Drop image(s) here</strong> or click to browse
+        <input id="fileInput" type="file" accept="image/*" multiple hidden />
+        <div id="fileCount" style="color:var(--muted);font-size:12px;margin-top:6px;">No files selected</div>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div id="progressText" style="font-size:13px;">Working...</div>
+        <div class="progress-bar-bg"><div id="progressFill" class="progress-bar-fill"></div></div>
+      </div>
+
+      <div class="toolbar">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-secondary" onclick="setBackdrop('bg-checker')">Checker</button>
+          <button class="btn-secondary" onclick="setBackdrop('bg-dark')">Dark</button>
+          <button class="btn-secondary" onclick="setBackdrop('bg-light')">Light</button>
+          <span style="font-size:12px;color:var(--muted);margin-left:8px;">Split:</span>
+          <input id="splitRange" type="range" min="0" max="100" value="50" style="width:120px;" />
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a id="downloadOne" class="btn-secondary" style="display:none;" download>Download</a>
+          <a id="downloadZip" class="btn-secondary" style="display:none;" download>Download ZIP</a>
+        </div>
+      </div>
+
+      <div id="stage" class="stage bg-checker">
+        <div id="placeholder" style="color:var(--muted);font-size:14px;">Preview will appear here</div>
+        <div id="compareBox" class="compare-box" style="display:none;">
+          <img id="beforeImg" alt="Before" />
+          <div id="afterWrap" class="compare-after">
+            <img id="afterImg" alt="After" />
+          </div>
+          <div id="divider" class="compare-divider"></div>
+        </div>
+      </div>
+
+      <div id="thumbs" class="thumbs"></div>
+    </section>
+  </main>
+
+  <script>
+    let selectedFiles = [];
+    let beforeUrls = [];
+    let results = [];
+    let meta = null;
+
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const runBtn = document.getElementById("runBtn");
+    const splitRange = document.getElementById("splitRange");
+
+    document.getElementById("defringe").addEventListener("input", (e) => {
+      document.getElementById("defringe_val").textContent = e.target.value;
+    });
+
+    splitRange.addEventListener("input", updateSplit);
+    function updateSplit() {
+      const pct = splitRange.value;
+      document.getElementById("afterWrap").style.clipPath = `inset(0 0 0 ${pct}%)`;
+      document.getElementById("divider").style.left = `${pct}%`;
+    }
+    function setBackdrop(cls) {
+      const stage = document.getElementById("stage");
+      stage.classList.remove("bg-checker", "bg-dark", "bg-light");
+      stage.classList.add(cls);
+    }
+
+    async function loadMeta() {
+      const res = await fetch("/api/meta");
+      meta = await res.json();
+      const modelSel = document.getElementById("model");
+      modelSel.innerHTML = "";
+      for (const m of meta.models) {
+        const opt = document.createElement("option");
+        opt.value = m.name;
+        const badge = m.cached ? "cached" : `~${m.size_mb} MB download`;
+        opt.textContent = `${m.name} (${badge})`;
+        if (m.name === meta.default_model) opt.selected = true;
+        modelSel.appendChild(opt);
+      }
+      const presetSel = document.getElementById("preset");
+      for (const p of meta.presets) {
+        const opt = document.createElement("option");
+        opt.value = p.name;
+        opt.textContent = `${p.name} — ${p.model}`;
+        presetSel.appendChild(opt);
+      }
+      const extSel = document.getElementById("ext");
+      for (const f of meta.formats) {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f.toUpperCase();
+        if (f === "png") opt.selected = true;
+        extSel.appendChild(opt);
+      }
+    }
+    loadMeta();
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("drag");
+      setFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener("change", (e) => setFiles(e.target.files));
+
+    function setFiles(fileList) {
+      selectedFiles = Array.from(fileList);
+      beforeUrls.forEach(URL.revokeObjectURL);
+      beforeUrls = selectedFiles.map((f) => URL.createObjectURL(f));
+      document.getElementById("fileCount").textContent =
+        selectedFiles.length ? `${selectedFiles.length} file(s) ready` : "No files selected";
+      runBtn.disabled = selectedFiles.length === 0;
+    }
+
+    function showResult(idx) {
+      const r = results[idx];
+      if (!r) return;
+      document.getElementById("placeholder").style.display = "none";
+      document.getElementById("compareBox").style.display = "block";
+      document.getElementById("beforeImg").src = beforeUrls[idx];
+      document.getElementById("afterImg").src = r.url;
+      updateSplit();
+      const dl = document.getElementById("downloadOne");
+      dl.href = r.url;
+      dl.download = r.filename;
+      dl.style.display = "inline-flex";
+      document.querySelectorAll(".thumb").forEach((el, i) => {
+        el.classList.toggle("active", i === idx);
+      });
+    }
+
+    runBtn.addEventListener("click", async () => {
+      if (!selectedFiles.length) return;
+      const modelName = document.getElementById("model").value;
+      const modelMeta = meta?.models.find((m) => m.name === modelName);
+      if (modelMeta && !modelMeta.cached) {
+        const ok = confirm(
+          `Model '${modelName}' (~${modelMeta.size_mb} MB) is not downloaded yet. Download now and continue?`
+        );
+        if (!ok) return;
+      }
+
+      runBtn.disabled = true;
+      results = [];
+      document.getElementById("thumbs").innerHTML = "";
+      document.getElementById("downloadZip").style.display = "none";
+      const pWrap = document.getElementById("progressWrap");
+      const pText = document.getElementById("progressText");
+      const pFill = document.getElementById("progressFill");
+      pWrap.style.display = "block";
+      pFill.style.width = "0%";
+      pText.textContent = "Starting...";
+
+      const fd = new FormData();
+      for (const f of selectedFiles) fd.append("files", f);
+      fd.append("model", modelName);
+      fd.append("preset", document.getElementById("preset").value);
+      fd.append("ext", document.getElementById("ext").value);
+      fd.append("bg_color", document.getElementById("bg_color").value);
+      fd.append("quality", document.getElementById("quality").value);
+      fd.append("defringe", document.getElementById("defringe").value);
+      fd.append("erode", document.getElementById("erode").value);
+      fd.append("feather", document.getElementById("feather").value);
+      fd.append("trim", document.getElementById("trim").checked ? "true" : "false");
+      fd.append("pad", document.getElementById("pad").value);
+
+      const resp = await fetch("/api/jobs", { method: "POST", body: fd });
+      const { job_id } = await resp.json();
+
+      const es = new EventSource(`/api/jobs/${job_id}/events`);
+      es.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.event === "download_start") {
+          pText.textContent = `Downloading ${data.model} (~${data.size_mb} MB)...`;
+        } else if (data.event === "download_progress") {
+          pText.textContent = `Downloading ${data.model}: ${data.percent}%`;
+          pFill.style.width = `${data.percent}%`;
+        } else if (data.event === "download_done") {
+          pText.textContent = `Model ${data.model} ready! Processing...`;
+          pFill.style.width = "0%";
+          loadMeta();
+        } else if (data.event === "start") {
+          pText.textContent = `Processing ${data.total} image(s) with ${data.model}...`;
+        } else if (data.event === "progress") {
+          results[data.index] = data;
+          const pct = Math.round((data.completed / data.total) * 100);
+          pFill.style.width = `${pct}%`;
+          pText.textContent = `Processed ${data.completed}/${data.total} (${data.ms} ms)`;
+          const btn = document.createElement("button");
+          btn.className = "thumb";
+          btn.textContent = data.filename;
+          btn.onclick = () => showResult(data.index);
+          document.getElementById("thumbs").appendChild(btn);
+          if (data.index === 0) showResult(0);
+        } else if (data.event === "done") {
+          pText.textContent = `Completed ${data.total} image(s).`;
+          pFill.style.width = "100%";
+          if (data.zip_url) {
+            const z = document.getElementById("downloadZip");
+            z.href = data.zip_url;
+            z.style.display = "inline-flex";
+          }
+          runBtn.disabled = false;
+          es.close();
+        } else if (data.event === "error") {
+          pText.textContent = `Error: ${data.error}`;
+          runBtn.disabled = false;
+          es.close();
+        }
+      };
+    });
+  </script>
+</body>
+</html>

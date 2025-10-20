@@ -13,7 +13,7 @@ Fast, local, customizable AI background remover and image pipeline — built for
 ## Installation
 
 ```bash
-git clone <your-repo-url> greg
+git clone https://github.com/tensorGT/gregr
 cd greg
 python -m venv .venv
 # Windows:
